@@ -1,0 +1,65 @@
+# PropelAI (Global) .gitignore
+# Single file for ALL ignore rules across backend and extension.
+
+# --- Environment & Secrets ---
+.env
+*.env
+.env.*
+propelai-backend/.env
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+.eggs/
+.installed.cfg
+pip-wheel-metadata/
+share/python-wheels/
+.sphinx/
+
+# Build & Dist
+build/
+dist/
+htmlcov/
+
+# Virtual Envs
+.venv/
+venv/
+ENV/
+env/
+
+# Testing & Type Checking
+.coverage*
+.pytest_cache/
+.tox/
+.mypy_cache/
+.cache/
+
+# Logs
+*.log
+logs/
+
+# --- Node/JS (Extension) ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Common build outputs
+build/
+dist/
+
+# --- IDE/OS ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- Docker/Compose Overrides ---
+docker-compose.override.yml
+*.pid

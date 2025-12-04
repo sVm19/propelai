@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PropelAI</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            width: 350px;
+            padding: 10px;
+            background-color: #f4f7f9;
+        }
+
+        h3 {
+            color: #333;
+            margin-top: 0;
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 5px;
+        }
+
+        .status-message {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .status-loading {
+            background-color: #ffe082;
+            /* Yellow */
+            color: #555;
+        }
+
+        .status-error {
+            background-color: #ffcdd2;
+            /* Red */
+            color: #d32f2f;
+        }
+
+        .idea-card {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .idea-card h4 {
+            color: #00796b;
+            margin: 0 0 5px 0;
+            font-size: 1.1em;
+        }
+
+        .idea-card p {
+            margin: 0 0 8px 0;
+            font-size: 0.9em;
+        }
+
+        .section-label {
+            font-weight: bold;
+            color: #555;
+            display: block;
+            margin-top: 5px;
+        }
+
+        #ideas-container {
+            display: none;
+            /* Hide until results are ready */
+        }
+
+        .action-button {
+            width: 100%;
+            padding: 10px;
+            background-color: #00796b;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 1em;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <h3>PropelAI ✨</h3>
+
+    <button id="generate-button" class="action-button">Generate Ideas From This Page</button>
+
+    <div id="status-area" class="status-message status-loading" style="display: none;"></div>
+
+    <div id="ideas-container">
+        <h4>Generated Opportunities:</h4>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>

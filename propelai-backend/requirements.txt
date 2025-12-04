@@ -1,0 +1,18 @@
+# Web Framework & Server (The API Gateway)
+fastapi
+uvicorn[standard]
+pydantic
+
+# Data Handling & NLP (The "Learning" Core)
+beautifulsoup4
+sumy
+yake
+
+# External API & Security
+requests
+python-dotenv
+httpx
+
+# Database (For Subscription Gating in Phase 3)
+psycopg2-binary
+SQLAlchemy
