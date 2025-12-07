@@ -14,8 +14,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # 4. Copy Application Code
 # Copy the main application file and the src directory
-COPY main.py .
-COPY src ./src
+COPY propelai-backend/main.py .
+COPY propelai-backend/src ./src
 
 # 5. Expose Port
 # FastAPI typically runs on port 8000
