@@ -9,7 +9,7 @@ WORKDIR /app
 # 3. Copy and Install Dependencies
 # Copy requirements.txt first to leverage Docker cache.
 # If requirements.txt doesn't change, this layer won't be rebuilt.
-COPY requirements.txt .
+COPY propelai-backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 4. Copy Application Code
