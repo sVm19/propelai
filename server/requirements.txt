@@ -1,0 +1,28 @@
+# Core Frameworks
+fastapi
+uvicorn
+
+# Database and ORM
+sqlalchemy
+psycopg2-binary
+
+# Authentication and Security
+python-jose[cryptography]  # For JWT token encoding/decoding
+passlib[bcrypt]            # For secure password hashing
+python-dotenv              # For loading .env files
+
+# Data Validation
+pydantic
+
+# Billing and Payments
+stripe                     # Official Stripe Python SDK
+
+# Utility (Used for accessing the request object for logging IP/User-Agent)
+starlette                  # FastAPI dependency, good practice to list explicitly
+
+# AI/NLP Requirements
+sumy
+ltk
+yake
+beautifulsoup4  
+lxml

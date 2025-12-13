@@ -1,17 +1,20 @@
-from fastapi import FastAPI, HTTPException, Depends
-from pydantic import BaseModel, ValidationError
-from dotenv import load_dotenv
-from sqlalchemy.orm import Session
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, ValidationError
+from sqlalchemy.orm import Session
+
 from typing import List
 
 # Import core files from the src directory
 from src.nlp_processor import NLPProcessor
 from src.database import get_db, create_database_tables, User, Idea
-from src.database import StartupIdea as DBStartupIdea # Avoid naming conflict with Pydantic model
-
-# Load environment variables from .env file
-load_dotenv()
+from src.auth import UserSignup, UserLogin, Token, signup_user, login_user, get_current_user
 
 # --- Configuration & Initialization ---
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -31,13 +34,21 @@ app = FastAPI(
     on_startup=[create_database_tables]
 )
 
+# Add CORS middleware for Chrome extension
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify your extension ID
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # --- Pydantic Schemas for API ---
 
 class IdeaRequest(BaseModel):
     """Schema for the data expected from the browser extension."""
     url: str
     text_content: str
-    user_id: str # Required for database lookup and monetization
 
 class StartupIdea(BaseModel):
     """Schema for a single structured idea returned by the LLM."""
@@ -51,15 +62,47 @@ class IdeaResponse(BaseModel):
     message: str
     ideas: List[StartupIdea]
 
+# --- Authentication Endpoints ---
+
+@app.post("/auth/signup", response_model=Token)
+async def signup(signup_data: UserSignup, db: Session = Depends(get_db)):
+    """
+    Register a new user account.
+    """
+    return signup_user(signup_data, db)
+
+@app.post("/auth/login", response_model=Token)
+async def login(login_data: UserLogin, db: Session = Depends(get_db)):
+    """
+    Authenticate and login a user.
+    """
+    return login_user(login_data, db)
+
+@app.get("/auth/me")
+async def get_me(current_user: User = Depends(get_current_user)):
+    """
+    Get current user information.
+    """
+    return {
+        "user_id": current_user.user_id,
+        "email": current_user.email,
+        "full_name": current_user.full_name,
+        "subscription_tier": current_user.subscription_tier,
+        "idea_credits": current_user.idea_credits,
+        "is_verified": current_user.is_verified
+    }
+
 # --- API Endpoint with Monetization Logic ---
 
 @app.post("/generate", response_model=IdeaResponse)
 async def generate_ideas(
-    request: IdeaRequest, 
-    db: Session = Depends(get_db) # Inject the database session
+    request: IdeaRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
     Primary endpoint: Checks subscription, generates ideas, deducts credits, and saves history.
+    Requires authentication.
     """
     if not request.text_content or len(request.text_content) < 150:
         raise HTTPException(
@@ -67,18 +110,8 @@ async def generate_ideas(
             detail="Content too short (min 150 chars) or empty for effective analysis."
         )
 
-    # 1. Monetization: User Lookup and Credit Check
-    # This is a placeholder for actual user authentication/lookup, assuming the extension sends a unique ID
-    db_user = db.query(User).filter(User.user_id == request.user_id).first()
-
-    if not db_user:
-        # If user doesn't exist, create a new free tier user
-        db_user = User(user_id=request.user_id, subscription_tier="free", idea_credits=3)
-        db.add(db_user)
-        db.commit()
-        db.refresh(db_user)
-        
-    if db_user.subscription_tier == "free" and db_user.idea_credits <= 0:
+    # 1. Monetization: Credit Check
+    if current_user.subscription_tier == "free" and current_user.idea_credits <= 0:
         raise HTTPException(
             status_code=403, 
             detail="Credit limit reached. Upgrade to Pro for unlimited ideas."
@@ -101,14 +134,14 @@ async def generate_ideas(
     
     # 3. Monetization: Credit Deduction and History Saving
     
-    if db_user.subscription_tier == "free":
+    if current_user.subscription_tier == "free":
         # Deduct a credit only for free users
-        db_user.idea_credits -= 1
+        current_user.idea_credits -= 1
         
     for idea_data in validated_ideas:
         # Save each generated idea to the database for history
         db_idea = Idea(
-            owner_id=db_user.id,
+            owner_id=current_user.id,
             name=idea_data.Name,
             problem=idea_data.Problem,
             solution=idea_data.Solution,
@@ -119,7 +152,7 @@ async def generate_ideas(
     db.commit()
 
     return IdeaResponse(
-        message=f"Success! {db_user.idea_credits} credits remaining.",
+        message=f"Success! {current_user.idea_credits} credits remaining.",
         ideas=validated_ideas
     )
 
