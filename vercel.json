@@ -10,9 +10,8 @@
         }
       },
       {
-        "src": "next.config.mjs",
-        "use": "@vercel/next",
-        "root": "client"
+        "src": "client/package.json",
+        "use": "@vercel/next"
       }
     ],
     "routes": [
