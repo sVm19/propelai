@@ -1,0 +1,20 @@
+{
+  "name": "propelai",
+  "version": "1.0.0",
+  "description": "PropelAI project with client and server",
+  "main": "index.js",
+  "scripts": {
+    "install-client": "cd client && npm install",
+    "build-client": "cd client && npm run build",
+    "start-client": "cd client && npm start",
+    "install-server": "pip install -r server/requirements.txt",
+    "build-server": "echo 'No specific build step for Python server beyond dependency installation.'",
+    "start-server": "cd server && uvicorn main:app --reload",
+    "postinstall": "npm run install-client && npm run install-server",
+    "build": "npm run build-client && npm run build-server",
+    "start": "npm run start-client & npm run start-server"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
