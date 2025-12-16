@@ -4,12 +4,18 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from src.database import get_db, Idea
 
 from typing import List
+router = APIRouter()
+@router.get("/api/greeting")
+async def get_greeting():
+    return {"message": "Hello from PropelAI FastAPI Backend!"}
 
 # Import core files from the src directory
 from src.nlp_processor import NLPProcessor
@@ -44,6 +50,20 @@ app.add_middleware(
 )
 
 # --- Pydantic Schemas for API ---
+
+class IdeaRequest(BaseModel):
+    prompt: str
+
+@app.post("/api/generate")
+async def generate_idea(request: IdeaRequest):
+    # This is where you will later call your NLP/AI logic
+    processed_text = f"AI Analysis of: {request.prompt}"
+    
+    return {
+        "status": "success",
+        "result": processed_text,
+        "credits_remaining": 9
+    }
 
 class IdeaRequest(BaseModel):
     """Schema for the data expected from the browser extension."""
@@ -161,3 +181,37 @@ async def generate_ideas(
 def health_check():
     """Simple endpoint to confirm the API is running."""
     return {"status": "ok", "service": "PropelAI"}
+
+@app.post("/api/generate")
+async def generate_idea(request: IdeaRequest, db: Session = Depends(get_db)):
+    # 1. AI Logic (Simplified for now)
+    processed_text = f"AI Analysis of: {request.prompt}"
+    
+    try:
+        # 2. Create the Database Object
+        new_idea = Idea(
+            prompt=request.prompt,
+            result=processed_text,
+            user_id=1 # Temporary: later this will be the logged-in user's ID
+        )
+        
+        # 3. Save to PostgreSQL
+        db.add(new_idea)
+        db.commit()
+        db.refresh(new_idea) # Get the generated ID back from the DB
+        
+        return {
+            "status": "success",
+            "id": new_idea.id,
+            "result": new_idea.result
+        }
+    except Exception as e:
+        db.rollback() # Undo changes if something goes wrong
+        print(f"Database error: {e}")
+        raise HTTPException(status_code=500, detail="Could not save idea to database")
+
+@app.get("/api/history")
+async def get_history(db: Session = Depends(get_db)):
+    # Fetch all ideas, ordered by ID descending (newest first)
+    ideas = db.query(Idea).order_by(Idea.id.desc()).all()
+    return ideas        

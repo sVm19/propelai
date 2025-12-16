@@ -1,0 +1,15 @@
+# Python
+venv_propelai/
+__pycache__/
+*.pyc
+.env
+
+# Next.js / Node
+node_modules/
+.next/
+out/
+build/
+.env.local
+
+# Database / OS
+.DS_Store
