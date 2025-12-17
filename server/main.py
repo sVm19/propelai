@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+import re
 
 # Load environment variables from .env file
 load_dotenv()
@@ -65,150 +66,55 @@ async def generate_idea(request: IdeaRequest):
         "credits_remaining": 9
     }
 
-class IdeaRequest(BaseModel):
-    """Schema for the data expected from the browser extension."""
-    url: str
-    text_content: str
 
-class StartupIdea(BaseModel):
-    """Schema for a single structured idea returned by the LLM."""
-    Name: str
-    Problem: str
-    Solution: str
-
-class IdeaResponse(BaseModel):
-    """Schema for the final API response."""
-    status: str = "success"
-    message: str
-    ideas: List[StartupIdea]
-
-# --- Authentication Endpoints ---
-
-@app.post("/auth/signup", response_model=Token)
-async def signup(signup_data: UserSignup, db: Session = Depends(get_db)):
-    """
-    Register a new user account.
-    """
-    return signup_user(signup_data, db)
-
-@app.post("/auth/login", response_model=Token)
-async def login(login_data: UserLogin, db: Session = Depends(get_db)):
-    """
-    Authenticate and login a user.
-    """
-    return login_user(login_data, db)
-
-@app.get("/auth/me")
-async def get_me(current_user: User = Depends(get_current_user)):
-    """
-    Get current user information.
-    """
-    return {
-        "user_id": current_user.user_id,
-        "email": current_user.email,
-        "full_name": current_user.full_name,
-        "subscription_tier": current_user.subscription_tier,
-        "idea_credits": current_user.idea_credits,
-        "is_verified": current_user.is_verified
-    }
-
-# --- API Endpoint with Monetization Logic ---
-
-@app.post("/generate", response_model=IdeaResponse)
-async def generate_ideas(
-    request: IdeaRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Primary endpoint: Checks subscription, generates ideas, deducts credits, and saves history.
-    Requires authentication.
-    """
-    if not request.text_content or len(request.text_content) < 150:
-        raise HTTPException(
-            status_code=400, 
-            detail="Content too short (min 150 chars) or empty for effective analysis."
-        )
-
-    # 1. Monetization: Credit Check
-    if current_user.subscription_tier == "free" and current_user.idea_credits <= 0:
-        raise HTTPException(
-            status_code=403, 
-            detail="Credit limit reached. Upgrade to Pro for unlimited ideas."
-        )
-
-    # 2. Idea Generation (Phase 1 Logic)
-    try:
-        processor = NLPProcessor(raw_text=request.text_content)
-        raw_idea_list = processor.call_llm()
-        
-        # Validate and structure the ideas
-        validated_ideas = [StartupIdea(**idea) for idea in raw_idea_list]
-        
-    except Exception as e:
-        print(f"Internal Processing Error: {e}")
-        raise HTTPException(
-            status_code=500, 
-            detail="An unexpected error occurred during idea generation."
-        )
-    
-    # 3. Monetization: Credit Deduction and History Saving
-    
-    if current_user.subscription_tier == "free":
-        # Deduct a credit only for free users
-        current_user.idea_credits -= 1
-        
-    for idea_data in validated_ideas:
-        # Save each generated idea to the database for history
-        db_idea = Idea(
-            owner_id=current_user.id,
-            name=idea_data.Name,
-            problem=idea_data.Problem,
-            solution=idea_data.Solution,
-            source_url=request.url
-        )
-        db.add(db_idea)
-    
-    db.commit()
-
-    return IdeaResponse(
-        message=f"Success! {current_user.idea_credits} credits remaining.",
-        ideas=validated_ideas
-    )
-
-# --- Health Check Endpoint ---
-@app.get("/health")
-def health_check():
-    """Simple endpoint to confirm the API is running."""
-    return {"status": "ok", "service": "PropelAI"}
+def extract_categories(prompt: str):
+    # Regex to find text inside [Categories: ...]
+    match = re.search(r"\[Categories:\s*(.*?)\]", prompt)
+    if match:
+        categories = match.group(1)
+        # Remove the bracketed part from the main prompt
+        clean_prompt = prompt.replace(match.group(0), "").strip()
+        return categories, clean_prompt
+    return None, prompt
 
 @app.post("/api/generate")
 async def generate_idea(request: IdeaRequest, db: Session = Depends(get_db)):
-    # 1. AI Logic (Simplified for now)
-    processed_text = f"AI Analysis of: {request.prompt}"
+    # 1. Check Credits (Existing Logic)
+    user = db.query(User).filter(User.id == 1).first()
+    if user.idea_credits <= 0:
+        raise HTTPException(status_code=403, detail="Insufficient credits")
+
+    # 2. Extract Categories from the string sent by Next.js
+    categories, clean_user_prompt = extract_categories(request.prompt)
+    
+    # 3. Build a specialized System Instruction
+    system_context = "You are an expert startup consultant."
+    if categories:
+        system_context += f" The user is interested in these specific industries: {categories}. "
+        system_context += "Ensure your business plan focuses on current trends and monetization strategies within these niches."
+
+    # 4. AI Processing (Simulated logic using the context)
+    processed_text = f"[{categories if categories else 'General'}] Analysis: {clean_user_prompt}"
     
     try:
-        # 2. Create the Database Object
         new_idea = Idea(
-            prompt=request.prompt,
+            prompt=clean_user_prompt, # Store the clean prompt in DB
             result=processed_text,
-            user_id=1 # Temporary: later this will be the logged-in user's ID
+            user_id=user.id
         )
-        
-        # 3. Save to PostgreSQL
+        user.idea_credits -= 1
         db.add(new_idea)
         db.commit()
-        db.refresh(new_idea) # Get the generated ID back from the DB
+        db.refresh(new_idea)
         
         return {
-            "status": "success",
-            "id": new_idea.id,
-            "result": new_idea.result
+            "status": "success", 
+            "result": new_idea.result, 
+            "credits_remaining": user.idea_credits
         }
     except Exception as e:
-        db.rollback() # Undo changes if something goes wrong
-        print(f"Database error: {e}")
-        raise HTTPException(status_code=500, detail="Could not save idea to database")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
 
 @app.get("/api/history")
 async def get_history(db: Session = Depends(get_db)):
