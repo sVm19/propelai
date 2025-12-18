@@ -31,3 +31,5 @@ yake
 # MISSING DEPENDENCIES REQUIRED BY 'transformers' and others
 requests
 tqdm
+beautifulsoup4
+email-validator
