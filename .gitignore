@@ -63,3 +63,5 @@ Thumbs.db
 # --- Docker/Compose Overrides ---
 docker-compose.override.yml
 *.pid
+.vercel
+.env*.local

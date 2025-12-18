@@ -1,4 +1,8 @@
 # Core Frameworks
+
+supabase
+
+
 fastapi
 uvicorn
 
@@ -24,5 +28,6 @@ starlette                  # FastAPI dependency, good practice to list explicitl
 sumy
 ltk
 yake
-beautifulsoup4  
-lxml
+# MISSING DEPENDENCIES REQUIRED BY 'transformers' and others
+requests
+tqdm
