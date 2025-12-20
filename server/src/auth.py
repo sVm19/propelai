@@ -4,11 +4,13 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from pydantic import BaseModel, EmailStr
-from sqlalchemy.orm import Session
 import os
 import uuid
+from appwrite.query import Query
 
-from .database import get_db, User, verify_password, get_password_hash
+# Replaced SQL imports with Appwrite Service
+from .appwrite_service import get_db_client, DATABASE_ID, USERS_COLLECTION_ID
+from .database import verify_password, get_password_hash # Keeping utils from database.py for hashing
 
 # JWT Configuration
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-this-in-production")
@@ -16,6 +18,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 43200  # 30 days for Chrome extension
 
 security = HTTPBearer()
+databases = get_db_client()
 
 # --- Pydantic Schemas ---
 
@@ -81,23 +84,29 @@ def verify_token(token: str) -> TokenData:
 # --- Dependency to Get Current User ---
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-) -> User:
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+) -> dict: # Returned user is now a dict (JSON), not a SQL Model
     """Dependency to get the current authenticated user."""
     token = credentials.credentials
     token_data = verify_token(token)
     
-    user = db.query(User).filter(User.email == token_data.email).first()
+    # Appwrite Query
+    result = databases.list_documents(
+        DATABASE_ID, 
+        USERS_COLLECTION_ID, 
+        queries=[Query.equal("email", token_data.email)]
+    )
     
-    if user is None:
-        raise HTTPException(
+    if result['total'] == 0:
+         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    if not user.is_active:
+    user = result['documents'][0]
+    
+    if not user.get('is_active', True):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Inactive user account"
@@ -107,11 +116,16 @@ async def get_current_user(
 
 # --- Authentication Endpoints ---
 
-def signup_user(signup_data: UserSignup, db: Session) -> Token:
+def signup_user(signup_data: UserSignup) -> Token:
     """Register a new user."""
     # Check if user already exists
-    existing_user = db.query(User).filter(User.email == signup_data.email).first()
-    if existing_user:
+    result = databases.list_documents(
+        DATABASE_ID, 
+        USERS_COLLECTION_ID, 
+        queries=[Query.equal("email", signup_data.email)]
+    )
+
+    if result['total'] > 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
@@ -119,80 +133,82 @@ def signup_user(signup_data: UserSignup, db: Session) -> Token:
     
     # Create new user
     hashed_password = get_password_hash(signup_data.password)
-    user_id = str(uuid.uuid4())  # Generate unique user ID
+    user_id = str(uuid.uuid4())
     
-    new_user = User(
-        user_id=user_id,
-        email=signup_data.email,
-        full_name=signup_data.full_name,
-        hashed_password=hashed_password,
-        subscription_tier="free",
-        idea_credits=5,
-        is_active=True,
-        is_verified=False
+    new_user_data = {
+        "email": signup_data.email,
+        "full_name": signup_data.full_name,
+        "hashed_password": hashed_password,
+        "subscription_tier": "free",
+        "idea_credits": 5,
+        "is_active": True
+    }
+    
+    user_doc = databases.create_document(
+        DATABASE_ID,
+        USERS_COLLECTION_ID,
+        ID.unique(),
+        new_user_data
     )
-    
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
     
     # Create access token
     access_token = create_access_token(
-        data={"user_id": new_user.user_id, "email": new_user.email}
+        data={"user_id": user_doc['$id'], "email": user_doc['email']}
     )
     
     return Token(
         access_token=access_token,
         user={
-            "user_id": new_user.user_id,
-            "email": new_user.email,
-            "full_name": new_user.full_name,
-            "subscription_tier": new_user.subscription_tier,
-            "idea_credits": new_user.idea_credits
+            "user_id": user_doc['$id'],
+            "email": user_doc['email'],
+            "full_name": user_doc['full_name'],
+            "subscription_tier": user_doc['subscription_tier'],
+            "idea_credits": user_doc['idea_credits']
         }
     )
 
-def login_user(login_data: UserLogin, db: Session) -> Token:
+def login_user(login_data: UserLogin) -> Token:
     """Authenticate and login a user."""
     # Find user by email
-    user = db.query(User).filter(User.email == login_data.email).first()
+    result = databases.list_documents(
+        DATABASE_ID, 
+        USERS_COLLECTION_ID, 
+        queries=[Query.equal("email", login_data.email)]
+    )
     
-    if not user:
+    if result['total'] == 0:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password"
         )
+    
+    user = result['documents'][0]
     
     # Verify password
-    if not verify_password(login_data.password, user.hashed_password):
+    if not verify_password(login_data.password, user['hashed_password']):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password"
         )
     
-    if not user.is_active:
-        raise HTTPException(
+    if not user.get('is_active', True):
+         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is inactive"
         )
     
-    # Update last login
-    user.last_login = datetime.utcnow()
-    db.commit()
-    
     # Create access token
     access_token = create_access_token(
-        data={"user_id": user.user_id, "email": user.email}
+        data={"user_id": user['$id'], "email": user['email']}
     )
     
     return Token(
         access_token=access_token,
         user={
-            "user_id": user.user_id,
-            "email": user.email,
-            "full_name": user.full_name,
-            "subscription_tier": user.subscription_tier,
-            "idea_credits": user.idea_credits
+            "user_id": user['$id'],
+            "email": user['email'],
+            "full_name": user['full_name'],
+            "subscription_tier": user['subscription_tier'],
+            "idea_credits": user['idea_credits']
         }
     )
-

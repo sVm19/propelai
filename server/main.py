@@ -1,27 +1,21 @@
 import os
-
 from dotenv import load_dotenv
 
 load_dotenv()
 
 import re
 from typing import List, Optional
-
-from src.database import get_db, create_database_tables, User, Idea
-
 from fastapi import FastAPI, HTTPException, Depends, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from appwrite.id import ID
+from appwrite.query import Query
 
 # Import core files from the src directory
-
 from src.nlp_processor import NLPProcessor
-from src.auth import get_current_user # Ensure this is imported
+# Import Appwrite Service
+from src.appwrite_service import init_appwrite, get_db_client, DATABASE_ID, USERS_COLLECTION_ID, IDEAS_COLLECTION_ID
 
-
-
-# --- Configuration & Initialization ---
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 if not GEMINI_API_KEY:
@@ -29,7 +23,7 @@ if not GEMINI_API_KEY:
 
 app = FastAPI(
     title="PropelAI Backend API",
-    on_startup=[create_database_tables]
+    on_startup=[init_appwrite] # Run Schema Migration on startup
 )
 
 app.add_middleware(
@@ -39,6 +33,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+databases = get_db_client()
 
 # --- Pydantic Schemas ---
 class IdeaRequest(BaseModel):
@@ -59,15 +55,29 @@ def extract_categories(prompt: str):
 
 @app.get("/api/greeting")
 async def get_greeting():
-    return {"message": "Hello from PropelAI FastAPI Backend!"}
+    return {"message": "Hello from PropelAI (Appwrite Edition)!"}
 
 @app.post("/api/generate")
-async def generate_idea(request: IdeaRequest, db: Session = Depends(get_db)):
-    # 1. Credit Check - Using a hardcoded user ID 1 for now
-    user = db.query(User).filter(User.id == 1).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    if user.idea_credits <= 0:
+async def generate_idea(request: IdeaRequest):
+    # 1. Credit Check - Hardcoded User for MVP (Replace with proper Auth later)
+    # We need to find the user. For MVP, we'll try to find the FIRST user created.
+    try:
+        user_list = databases.list_documents(DATABASE_ID, USERS_COLLECTION_ID, queries=[])
+        if user_list['total'] == 0:
+             # Create a dummy user if none exists for testing
+             user = databases.create_document(DATABASE_ID, USERS_COLLECTION_ID, ID.unique(), {
+                 "email": "test@example.com",
+                 "full_name": "Test User", 
+                 "hashed_password": "dummy_hash",
+                 "idea_credits": 5,
+                 "is_active": True
+             })
+        else:
+             user = user_list['documents'][0]
+    except Exception as e:
+         raise HTTPException(status_code=500, detail=f"Database connection error: {str(e)}")
+
+    if user['idea_credits'] <= 0:
         raise HTTPException(status_code=403, detail="Insufficient credits")
 
     # 2. Extract Categories
@@ -101,58 +111,79 @@ async def generate_idea(request: IdeaRequest, db: Session = Depends(get_db)):
 
     # 5. Process and Save
     saved_ideas = []
+    
+    # Decrement Credits
+    databases.update_document(DATABASE_ID, USERS_COLLECTION_ID, user['$id'], {
+        "idea_credits": user['idea_credits'] - 1
+    })
+
     if "BRAINSTORM_MODE" in request.prompt:
         raw_ideas = ai_raw_response.split("---")
         for raw_item in raw_ideas:
             if len(raw_item.strip()) < 10: continue
-            new_idea = Idea(
-                owner_id=user.id, # Fixed: matched with your Idea model 'owner_id'
-                name="New Venture", # Placeholder
-                problem=raw_item.strip(),
-                solution="Detailed in analysis",
-                result=raw_item.strip()
-            )
-            db.add(new_idea)
+            
+            new_idea_data = {
+                "owner_id": user['$id'],
+                "name": "New Venture",
+                "problem": raw_item.strip()[:255], # Truncate for safety
+                "result": raw_item.strip(),
+                "created_at": datetime.utcnow().isoformat()
+            }
+            
+            new_idea = databases.create_document(DATABASE_ID, IDEAS_COLLECTION_ID, ID.unique(), new_idea_data)
             saved_ideas.append(new_idea)
     else:
-        new_idea = Idea(
-            owner_id=user.id,
-            name="Analysis",
-            problem=clean_user_prompt,
-            result=ai_raw_response
-        )
-        db.add(new_idea)
+        new_idea_data = {
+            "owner_id": user['$id'],
+            "name": "Analysis",
+            "problem": clean_user_prompt[:255],
+            "result": ai_raw_response,
+            "created_at": datetime.utcnow().isoformat()
+        }
+        new_idea = databases.create_document(DATABASE_ID, IDEAS_COLLECTION_ID, ID.unique(), new_idea_data)
         saved_ideas.append(new_idea)
 
-    user.idea_credits -= 1
-    db.commit()
-    
     return {
         "status": "success",
-        "ideas": [{"id": i.id, "result": i.result} for i in saved_ideas],
-        "credits_remaining": user.idea_credits
+        "ideas": [{"id": i['$id'], "result": i['result']} for i in saved_ideas],
+        "credits_remaining": user['idea_credits'] - 1
     }
 
 @app.get("/api/history")
-async def get_history(db: Session = Depends(get_db)):
-    return db.query(Idea).order_by(Idea.id.desc()).all()
+async def get_history():
+    # Fetch all ideas
+    result = databases.list_documents(
+        DATABASE_ID, 
+        IDEAS_COLLECTION_ID, 
+        queries=[Query.order_desc("$createdAt")] # Appwrite uses $createdAt or custom attribute
+    )
+    
+    # Map Appwrite documents to frontend expected format
+    return [
+        {
+            "id": doc['$id'],
+            "result": doc['result'],
+            "is_starred": doc.get('is_starred', False)
+        } for doc in result['documents']
+    ]
 
 @app.patch("/api/ideas/{idea_id}/toggle-star")
-async def toggle_star(idea_id: int, db: Session = Depends(get_db)):
-    idea = db.query(Idea).filter(Idea.id == idea_id).first()
-    if not idea:
+async def toggle_star(idea_id: str):
+    try:
+        idea = databases.get_document(DATABASE_ID, IDEAS_COLLECTION_ID, idea_id)
+        new_status = not idea.get('is_starred', False)
+        
+        databases.update_document(DATABASE_ID, IDEAS_COLLECTION_ID, idea_id, {
+            "is_starred": new_status
+        })
+        return {"status": "success", "is_starred": new_status}
+    except Exception:
         raise HTTPException(status_code=404, detail="Idea not found")
-    
-    idea.is_starred = not idea.is_starred
-    db.commit()
-    return {"status": "success", "is_starred": idea.is_starred}
 
 @app.delete("/api/ideas/{idea_id}")
-async def delete_idea(idea_id: int, db: Session = Depends(get_db)):
-    idea = db.query(Idea).filter(Idea.id == idea_id).first()
-    if not idea:
+async def delete_idea(idea_id: str):
+    try:
+        databases.delete_document(DATABASE_ID, IDEAS_COLLECTION_ID, idea_id)
+        return {"status": "success", "message": "Idea deleted"}
+    except Exception:
         raise HTTPException(status_code=404, detail="Idea not found")
-    
-    db.delete(idea)
-    db.commit()
-    return {"status": "success", "message": "Idea deleted"}

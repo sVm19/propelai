@@ -1,14 +1,9 @@
 # Core Frameworks
-
-supabase
-
-
 fastapi
 uvicorn
 
-# Database and ORM
-sqlalchemy
-psycopg2-binary
+# Database
+appwrite
 
 # Authentication and Security
 python-jose[cryptography]  # For JWT token encoding/decoding
