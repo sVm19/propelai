@@ -15,6 +15,8 @@ from appwrite.query import Query
 from src.nlp_processor import NLPProcessor
 # Import Appwrite Service
 from src.appwrite_service import init_appwrite, get_db_client, DATABASE_ID, USERS_COLLECTION_ID, IDEAS_COLLECTION_ID
+# Import Auth
+from src.auth import signup_user, login_user, UserSignup, UserLogin, Token
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
@@ -52,6 +54,21 @@ def extract_categories(prompt: str):
     return None, prompt
 
 # --- API Routes ---
+
+@app.post("/auth/signup", response_model=Token)
+async def signup(user: UserSignup):
+    """Register a new user."""
+    # We pass 'databases' which is initialized globally, but src.auth imports it directly now or we pass it?
+    # In src/auth.py (Step 246), it calls 'get_db_client()'. Ideally we shouldn't pass it if it's internal.
+    # Looking at src/auth.py signatures in Step 246:
+    # def signup_user(signup_data: UserSignup) -> Token
+    # It doesn't take db session anymore.
+    return signup_user(user)
+
+@app.post("/auth/login", response_model=Token)
+async def login(user: UserLogin):
+    """Login an existing user."""
+    return login_user(user)
 
 @app.get("/api/greeting")
 async def get_greeting():

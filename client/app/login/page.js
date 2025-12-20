@@ -1,9 +1,9 @@
-// client/app/login/page.js
 "use client"; // Marks this as a Client Component
 
 import React, { useState } from 'react';
 import { publicApi } from '../../utils/api';
 import { useRouter } from 'next/navigation';
+import { ModeToggle } from "@/components/mode-toggle";
 
 const LoginPage = () => {
     const [email, setEmail] = useState('');
@@ -31,7 +31,7 @@ const LoginPage = () => {
             localStorage.setItem('accessToken', token);
 
             // Redirect to the dashboard
-            router.push('/dashboard');
+            router.push('/');
 
         } catch (err) {
             console.error('Login Failed:', err.response || err);
@@ -42,14 +42,17 @@ const LoginPage = () => {
     };
 
     return (
-        // UI code using Tailwind CSS remains the same
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-            <div className="max-w-md w-full p-8 space-y-6 bg-white shadow-xl rounded-lg">
-                <h2 className="text-3xl font-extrabold text-center text-gray-900">
+        <div className="min-h-screen flex items-center justify-center bg-background text-foreground relative overflow-hidden">
+            <div className="fixed top-4 right-4 animate-in fade-in slide-in-from-top-4 duration-700 delay-200">
+                <ModeToggle />
+            </div>
+            <div className="fixed top-0 -z-10 h-full w-full bg-background [background:radial-gradient(125%_125%_at_50%_10%,var(--primary)_0%,transparent_50%)] opacity-30"></div>
+
+            <div className="max-w-md w-full p-8 space-y-6 bg-card border border-border/50 shadow-2xl rounded-lg backdrop-blur-md">
+                <h2 className="text-3xl font-extrabold text-center text-foreground">
                     Sign in to Propel AI
                 </h2>
                 <form className="mt-8 space-y-6" onSubmit={handleLogin}>
-                    {/* ... form inputs and button ... */}
                     <div className="rounded-md shadow-sm space-y-4">
                         <div>
                             <label htmlFor="email-address" className="sr-only">Email address</label>
@@ -58,7 +61,7 @@ const LoginPage = () => {
                                 name="email"
                                 type="email"
                                 required
-                                className="appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                className="appearance-none rounded-md relative block w-full px-3 py-2 border border-input bg-secondary/50 placeholder-muted-foreground text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary focus:z-10 sm:text-sm"
                                 placeholder="Email address"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
@@ -71,7 +74,7 @@ const LoginPage = () => {
                                 name="password"
                                 type="password"
                                 required
-                                className="appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                className="appearance-none rounded-md relative block w-full px-3 py-2 border border-input bg-secondary/50 placeholder-muted-foreground text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary focus:z-10 sm:text-sm"
                                 placeholder="Password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
@@ -80,14 +83,14 @@ const LoginPage = () => {
                     </div>
 
                     {error && (
-                        <div className="text-red-600 text-sm font-medium">{error}</div>
+                        <div className="text-destructive text-sm font-medium">{error}</div>
                     )}
 
                     <div>
                         <button
                             type="submit"
                             disabled={loading}
-                            className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                            className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-primary-foreground bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 transition-colors"
                         >
                             {loading ? 'Signing In...' : 'Sign In'}
                         </button>
